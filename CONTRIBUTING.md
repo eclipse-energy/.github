@@ -5,7 +5,7 @@ These apply to all repositories inside the eclipse-energy organization.
 
 ## IDE
 
-Our IDEs of choice is IntelliJ idea (and VS Code for frontend). Repositories and style guides are setup with these 2 IDEs in mind.
+Our IDE of choice is IntelliJ idea (and VS Code for frontend). Repositories and style guides are setup with these 2 IDEs in mind.
 
 ## Branches
 
