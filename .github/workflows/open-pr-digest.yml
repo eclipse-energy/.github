@@ -1,0 +1,623 @@
+name: Open PR Digest
+
+on:
+  schedule:
+    - cron: "30 8 * * 1-5"
+      timezone: "Europe/Vienna"
+
+  workflow_dispatch:
+
+jobs:
+  send-pr-digest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Build PR digest
+        id: digest
+        env:
+          GH_TOKEN: ${{ secrets.PR_DIGEST_TOKEN }}
+        shell: bash
+        run: |
+          python <<'PY'
+          import json
+          import subprocess
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+
+          TIMEZONE = ZoneInfo("Europe/Berlin")
+
+          REPOS = [
+              "eclipse-energy/eclipse-aiida",
+              "eclipse-energy/eclipse-app",
+              "eclipse-energy/eclipse-base-helm",
+              "eclipse-energy/eclipse-marketplace",
+              "eclipse-energy/eclipse-services",
+              "eclipse-energy/data-wallet-app",
+              "eclipse-energy/energiebezirk-freistadt",
+          ]
+
+          now = datetime.now(TIMEZONE)
+
+
+          # =========================================================
+          # Helpers
+          # =========================================================
+
+          def run_gh(args):
+              result = subprocess.run(
+                  ["gh"] + args,
+                  capture_output=True,
+                  text=True
+              )
+
+              if result.returncode != 0:
+                  print("GitHub CLI command failed:")
+                  print("gh " + " ".join(args))
+                  print()
+                  print("GitHub CLI error:")
+                  print(result.stderr)
+
+                  raise RuntimeError(
+                      f"GitHub CLI exited with code {result.returncode}"
+                  )
+
+              return json.loads(result.stdout)
+
+
+          def parse_github_date(value):
+              if not value:
+                  return None
+
+              return datetime.fromisoformat(
+                  value.replace("Z", "+00:00")
+              ).astimezone(TIMEZONE)
+
+
+          def format_age(created_at):
+              created = parse_github_date(created_at)
+
+              if not created:
+                  return "unknown"
+
+              days = (now.date() - created.date()).days
+
+              if days <= 0:
+                  return "today"
+
+              if days == 1:
+                  return "yesterday"
+
+              return f"{days}d ago"
+
+
+          def review_text(pr):
+              decision = pr.get("reviewDecision")
+
+              if decision == "APPROVED":
+                  return "Approved"
+
+              if decision == "CHANGES_REQUESTED":
+                  return "Changes requested"
+
+              if decision == "REVIEW_REQUIRED":
+                  return "Waiting for review"
+
+              return "No review activity yet"
+
+
+          def author_name(pr):
+              author = pr.get("author")
+
+              if author:
+                  return author.get("login", "unknown")
+
+              return "unknown"
+
+
+          def pr_link(pr):
+              return f"[#{pr['number']} {pr['title']}]({pr['url']})"
+
+
+          def append_heading(
+              body,
+              heading,
+              summary,
+              *,
+              heading_size=None,
+              separator=False,
+              spacing=None,
+              summary_bold=False,
+              summary_centered=False,
+              summary_wrap=None
+          ):
+              heading_block = {
+                  "type": "TextBlock",
+                  "text": heading,
+                  "weight": "Bolder",
+                  "wrap": True
+              }
+
+              if heading_size:
+                  heading_block["size"] = heading_size
+
+              summary_block = {
+                  "type": "TextBlock",
+                  "text": summary,
+                  "isSubtle": True
+              }
+
+              if summary_bold:
+                  summary_block["weight"] = "Bolder"
+
+              if summary_wrap is not None:
+                  summary_block["wrap"] = summary_wrap
+
+              summary_column = {
+                  "type": "Column",
+                  "width": "auto",
+                  "items": [summary_block]
+              }
+
+              if summary_centered:
+                  summary_column[
+                      "verticalContentAlignment"
+                  ] = "Center"
+
+              column_set = {
+                  "type": "ColumnSet",
+                  "columns": [
+                      {
+                          "type": "Column",
+                          "width": "stretch",
+                          "items": [heading_block]
+                      },
+                      summary_column
+                  ]
+              }
+
+              if separator:
+                  column_set["separator"] = True
+
+              if spacing:
+                  column_set["spacing"] = spacing
+
+              body.append(column_set)
+
+
+          # =========================================================
+          # Determine merge reporting period
+          # =========================================================
+          #
+          # Monday:
+          #   Report Friday + Saturday + Sunday.
+          #
+          # Tuesday-Friday:
+          #   Report yesterday.
+          #
+          # Python weekday():
+          #   Monday = 0
+          #   Tuesday = 1
+          #   ...
+          #   Sunday = 6
+          # =========================================================
+
+          if now.weekday() == 0:
+              merge_dates = {
+                  (now - timedelta(days=1)).date(),  # Sunday
+                  (now - timedelta(days=2)).date(),  # Saturday
+                  (now - timedelta(days=3)).date(),  # Friday
+              }
+
+              merge_heading = "Merged since Friday"
+              merge_empty_text = (
+                  "No pull requests were merged since Friday."
+              )
+              merge_summary_suffix = "merged since Friday"
+
+          else:
+              yesterday = (now - timedelta(days=1)).date()
+
+              merge_dates = {yesterday}
+
+              merge_heading = "Merged yesterday"
+              merge_empty_text = (
+                  "No pull requests were merged yesterday."
+              )
+              merge_summary_suffix = "merged yesterday"
+
+
+          # =========================================================
+          # Query GitHub
+          # =========================================================
+
+          merged_by_repo = {}
+          open_by_repo = {}
+
+          merged_total = 0
+          open_total = 0
+
+
+          for repo in REPOS:
+
+              # -----------------------------------------------------
+              # Recently merged PRs
+              # -----------------------------------------------------
+
+              merged_prs = run_gh([
+                  "pr", "list",
+                  "--repo", repo,
+                  "--state", "merged",
+                  "--limit", "100",
+                  "--json",
+                  "number,title,url,author,mergedAt"
+              ])
+
+              merged_in_period = []
+
+              for pr in merged_prs:
+                  merged_at = parse_github_date(
+                      pr.get("mergedAt")
+                  )
+
+                  if (
+                      merged_at
+                      and merged_at.date() in merge_dates
+                  ):
+                      merged_in_period.append(pr)
+
+              merged_by_repo[repo] = merged_in_period
+              merged_total += len(merged_in_period)
+
+
+              # -----------------------------------------------------
+              # Currently open PRs
+              # -----------------------------------------------------
+
+              open_prs = run_gh([
+                  "pr", "list",
+                  "--repo", repo,
+                  "--state", "open",
+                  "--limit", "100",
+                  "--json",
+                  "number,title,url,author,isDraft,"
+                  "createdAt,reviewDecision"
+              ])
+
+              open_by_repo[repo] = open_prs
+              open_total += len(open_prs)
+
+
+          # =========================================================
+          # Build Adaptive Card
+          # =========================================================
+
+          body = []
+
+
+          # =========================================================
+          # Header
+          # =========================================================
+
+          append_heading(
+              body,
+              "Pull Request Digest",
+              now.strftime("%d.%m.%Y · %H:%M"),
+              heading_size="Large",
+              summary_centered=True,
+              summary_wrap=False
+          )
+
+
+          # =========================================================
+          # Merged PRs
+          # =========================================================
+
+          append_heading(
+              body,
+              merge_heading,
+              f"{merged_total} merged",
+              heading_size="Medium",
+              separator=True,
+              spacing="Medium",
+              summary_bold=True,
+              summary_centered=True
+          )
+
+
+          if merged_total == 0:
+
+              body.append({
+                  "type": "TextBlock",
+                  "text": merge_empty_text,
+                  "isSubtle": True,
+                  "spacing": "Small",
+                  "wrap": True
+              })
+
+          else:
+
+              for repo in REPOS:
+                  prs = merged_by_repo[repo]
+
+                  if not prs:
+                      continue
+
+                  repo_name = repo.split("/")[-1]
+
+                  # Repository + count on one line
+                  append_heading(
+                      body,
+                      repo_name,
+                      f"{len(prs)} merged",
+                      spacing="Small"
+                  )
+
+                  merged_lines = []
+
+                  for pr in prs:
+                      merged_lines.append(
+                          f"• {pr_link(pr)} · "
+                          f"{author_name(pr)}"
+                      )
+
+                  body.append({
+                      "type": "TextBlock",
+                      "text": "\n".join(merged_lines),
+                      "wrap": True,
+                      "spacing": "None"
+                  })
+
+
+          # =========================================================
+          # Open PR section
+          # =========================================================
+
+          repositories_with_open_prs = sum(
+              1
+              for prs in open_by_repo.values()
+              if prs
+          )
+
+          append_heading(
+              body,
+              "Open Pull Requests",
+              f"{open_total} open",
+              heading_size="Medium",
+              separator=True,
+              spacing="Medium",
+              summary_bold=True,
+              summary_centered=True
+          )
+
+          body.append({
+              "type": "TextBlock",
+              "text": (
+                  f"Across {repositories_with_open_prs} "
+                  f"repositor"
+                  f"{'y' if repositories_with_open_prs == 1 else 'ies'}"
+              ),
+              "isSubtle": True,
+              "spacing": "None",
+              "wrap": True
+          })
+
+
+          # =========================================================
+          # Repositories containing open PRs
+          # =========================================================
+
+          empty_repositories = []
+
+          for repo in REPOS:
+
+              repo_name = repo.split("/")[-1]
+              prs = open_by_repo[repo]
+
+              if not prs:
+                  empty_repositories.append(repo_name)
+                  continue
+
+
+              # -----------------------------------------------------
+              # Repository heading
+              #
+              # eclipse-aiida                       8 open
+              # -----------------------------------------------------
+
+              append_heading(
+                  body,
+                  repo_name,
+                  f"{len(prs)} open",
+                  separator=True,
+                  spacing="Medium",
+                  summary_bold=True,
+                  summary_centered=True,
+                  summary_wrap=False
+              )
+
+
+              # -----------------------------------------------------
+              # Individual PRs
+              #
+              # • #460 Setup Teams notifications  DRAFT
+              #   thomasstaltner · today · No review activity yet
+              # -----------------------------------------------------
+
+              for index, pr in enumerate(prs):
+
+                  author = author_name(pr)
+                  age = format_age(pr.get("createdAt"))
+                  review = review_text(pr)
+
+                  draft = (
+                      " · **DRAFT**"
+                      if pr.get("isDraft")
+                      else ""
+                  )
+
+                  pr_text = (
+                      f"• {pr_link(pr)}{draft}\n"
+                      f"  {author} · {age} · {review}"
+                  )
+
+                  body.append({
+                      "type": "TextBlock",
+                      "text": pr_text,
+                      "wrap": True,
+                      "spacing": (
+                          "Small"
+                          if index == 0
+                          else "Medium"
+                      )
+                  })
+
+
+          # =========================================================
+          # Repositories without open PRs
+          # =========================================================
+
+          if empty_repositories:
+
+              body.append({
+                  "type": "ColumnSet",
+                  "separator": True,
+                  "spacing": "Medium",
+                  "columns": [
+                      {
+                          "type": "Column",
+                          "width": "auto",
+                          "items": [
+                              {
+                                  "type": "TextBlock",
+                                  "text": "No open PRs",
+                                  "weight": "Bolder"
+                              }
+                          ]
+                      },
+                      {
+                          "type": "Column",
+                          "width": "stretch",
+                          "items": [
+                              {
+                                  "type": "TextBlock",
+                                  "text": " · ".join(
+                                      empty_repositories
+                                  ),
+                                  "isSubtle": True,
+                                  "wrap": True
+                              }
+                          ]
+                      }
+                  ]
+              })
+
+
+          # =========================================================
+          # Teams webhook payload
+          # =========================================================
+
+          payload = {
+              "type": "message",
+              "attachments": [
+                  {
+                      "contentType": (
+                          "application/vnd.microsoft.card.adaptive"
+                      ),
+                      "contentUrl": None,
+                      "content": {
+                          "$schema": (
+                              "http://adaptivecards.io/"
+                              "schemas/adaptive-card.json"
+                          ),
+                          "type": "AdaptiveCard",
+                          "version": "1.4",
+
+                          # Ask Teams to use the maximum available
+                          # width for this Adaptive Card.
+                          "msteams": {
+                              "width": "Full"
+                          },
+
+                          "body": body
+                      }
+                  }
+              ]
+          }
+
+
+          with open(
+              "/tmp/teams-message.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+
+              json.dump(
+                  payload,
+                  f,
+                  ensure_ascii=False
+              )
+
+
+          # =========================================================
+          # GitHub Actions log
+          # =========================================================
+
+          print(
+              f"Digest generated: "
+              f"{merged_total} {merge_summary_suffix}, "
+              f"{open_total} currently open."
+          )
+
+          print(
+              "Merge dates: "
+              + ", ".join(
+                  sorted(
+                      date.isoformat()
+                      for date in merge_dates
+                  )
+              )
+          )
+
+          for repo in REPOS:
+              print(
+                  f"- {repo}: "
+                  f"{len(open_by_repo[repo])} open, "
+                  f"{len(merged_by_repo[repo])} "
+                  f"merged in reporting period"
+              )
+
+          PY
+
+
+      - name: Send digest to Teams
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          echo "Sending Teams webhook..."
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/teams-response.txt \
+            --write-out "%{http_code}" \
+            --retry 3 \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/teams-message.json \
+            "$TEAMS_WEBHOOK_URL")
+
+          echo "Teams webhook HTTP status: $HTTP_STATUS"
+
+          if [ -s /tmp/teams-response.txt ]; then
+            echo "Teams webhook response:"
+            cat /tmp/teams-response.txt
+            echo
+          fi
+
+          if [ "$HTTP_STATUS" -lt 200 ] || \
+             [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "Teams webhook failed."
+            exit 1
+          fi
+
+          echo "Teams webhook accepted."
