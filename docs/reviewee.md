@@ -9,7 +9,7 @@ Guidelines for creating PRs and to get your PR accepted as efficiently as possib
 
 - keep PRs as small as possible!
 - if your PR is too large split it up into multiple!
-- try to keep it below **30 Files changed** and **3000 new lines**
+- try to keep it below **30 Files changed** and **3000 new lines / deleted lines**
   - if your PR is too large reviewers will not review it and will ask you to split it up
   - if it is not possible to split up, note it in the PR summary and expect slower reviews.
 
@@ -30,10 +30,11 @@ make sure that:
 
 - you have filled out the PR summary.
 - you are under or close to the size limit.
-- you had a quick look over all your changes yourself.
+- you had a quick look over all your changes yourself. Review it like you would review others.
 - all Actions pass (e.g. E2E tests or build).
   - (usually) reviewers will not review a PR that has failing pipelines.
 - you have removed all unneeded comments.
+- if you want you can use an AI Agent to review it locally first.
 
 ## How to handle reviewer comments
 

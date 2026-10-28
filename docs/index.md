@@ -2,9 +2,9 @@
 layout: home
 
 hero:
-  name: Eclipse Team Guidelines
+  name: ECLIPSE Team Guidelines
   text: How we build and review together
-  tagline: These apply to all repositories inside the eclipse-energy organization.
+  tagline: Contributing guidelines for the Austrian MVP of the ECLIPSE project
   image:
     src: /EclipseLogo.png
     alt: Eclipse logo
@@ -21,6 +21,9 @@ hero:
     - theme: alt
       text: AI
       link: /ai
+    - theme: alt
+      text: ECLIPSE website
+      link: https://eclipse-digital.eu/
 
 features:
   - title: Contributor

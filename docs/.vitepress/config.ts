@@ -31,7 +31,15 @@ export default defineConfig({
             ],
           },
           { text: "Reviewee", link: "/reviewee" },
-          { text: "AI", link: "/ai" },
+          {
+            text: "AI",
+            link: "/ai",
+            collapsed: false,
+            items: [
+              { text: "For people using AI", link: "/ai/for-people" },
+              { text: "For AI agents", link: "/ai/for-agents" },
+            ],
+          },
         ],
       },
     ],
