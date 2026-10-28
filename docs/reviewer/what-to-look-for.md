@@ -62,7 +62,6 @@ The most important thing to check. Look at the PR as a whole before the details.
 
 - look at every line you were asked to review. Generated code and data files can be skimmed
   - for generated code please think twice if it even makes sense to have it in version control.
-- don't skim over non-generated code and assume it is fine.
 - if you can't understand the code, ask the author to clarify it. Others will have the same problem later.
 - if you understand it but don't feel qualified (e.g. security, accessibility, frontend/backend), make sure someone who is qualified reviews it.
 - if you only reviewed part of the PR, say which part in your review (again frontend/backend).
