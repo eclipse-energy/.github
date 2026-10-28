@@ -21,7 +21,7 @@ hero:
     - theme: alt
       text: AI
       link: /ai
-    - theme: alt
+    - theme: sponsor
       text: ECLIPSE website
       link: https://eclipse-digital.eu/
 
