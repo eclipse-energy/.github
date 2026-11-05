@@ -7,5 +7,7 @@ Rules for using AI tools in our work and for AI agents working in our repositori
 
 ## Further reading
 
+- [AI code reviews](/ai/code-review)
+- [Example code review skill](/ai/example-skill)
 - [For people using AI](/ai/for-people)
 - [For AI agents](/ai/for-agents)

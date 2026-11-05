@@ -36,6 +36,8 @@ export default defineConfig({
             link: "/ai",
             collapsed: false,
             items: [
+              { text: "AI code reviews", link: "/ai/code-review" },
+              { text: "Example review skill", link: "/ai/example-skill" },
               { text: "For people using AI", link: "/ai/for-people" },
               { text: "For AI agents", link: "/ai/for-agents" },
             ],
