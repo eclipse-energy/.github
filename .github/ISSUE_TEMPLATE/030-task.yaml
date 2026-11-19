@@ -1,6 +1,5 @@
 name: Task
 description: A small, actionable unit of work.
-title: "Task"
 labels: ["eclipse"]
 type: Task
 

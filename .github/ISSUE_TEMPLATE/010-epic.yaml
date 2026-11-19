@@ -1,6 +1,5 @@
 name: Epic
 description: A large initiative composed of smaller features and tasks.
-title: "Epic"
 labels: ["eclipse"]
 type: Epic
 

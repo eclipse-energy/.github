@@ -1,6 +1,5 @@
 name: Bug
 description: A small, actionable unit of work.
-title: "Bug"
 labels: ["bug"]
 type: Bug
 

@@ -1,6 +1,5 @@
 name: Feature
 description: A new feature or enhancement.
-title: "Feature"
 labels: ["enhancement", "eclipse"]
 type: Feature
 
